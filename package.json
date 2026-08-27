@@ -1,0 +1,35 @@
+{
+  "name": "seo-content-master",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gyan Sadhan SEO Content Engine — evidence-grounded book page generation with Claude + Gemini free-tier verification.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "migrate": "tsx src/db/migrate.ts up",
+    "migrate:status": "tsx src/db/migrate.ts status",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "worker:gemini-quota": "tsx src/workers/gemini/run.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5.34.0",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "luxon": "^3.5.0",
+    "pg": "^8.13.1",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.4.2",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
