@@ -3,6 +3,14 @@
 -- Corrected, dependency-ordered version of the v4 schema spec
 -- (docs/seo-content-engine-v4-schema.md, uploaded 2026-08-27).
 --
+-- This file is a point-in-time snapshot, not kept in sync afterward —
+-- migrations/*.sql is the actual source of truth for the live schema.
+-- Notably, migrations/013 and 014 change content_briefs and seo_audits
+-- beyond what's written below (a FAQ-count range column, and a rename
+-- of the skeleton-similarity columns once §4a was actually implemented
+-- as a pooled corpus comparison rather than the pairwise one guessed at
+-- here). See those files' own comments for why.
+--
 -- Fixes applied relative to v4, marked inline with [FIX]/[NEW]:
 --   1. Reordered table creation so every REFERENCES target exists first.
 --      v4 had `works` referencing authors/publishers/categories before

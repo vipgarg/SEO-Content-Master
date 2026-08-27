@@ -45,20 +45,36 @@ are enforced in exactly one place.
 **`src/lib/pacificQuotaDay.ts`** — DST-aware Pacific-midnight computation
 (the thing v3 of the plan got wrong by hardcoding a fixed UTC offset).
 
+**`src/checks/`** — the deterministic checks pipeline (plan §5 Step 4,
+§4a): every check that has to pass before a page is allowed to spend
+any Gemini quota, running as pure functions over plain data plus one
+thin Postgres-backed loader/persister (`db.ts`), same split as the
+gemini worker.
+
+- `textExtraction.ts` — number/date/ISBN extraction, entity normalization, sentence splitting, and the sentence-skeleton fingerprint §4a's ratio check is built on
+- `evidenceIntegrity.ts` — every claim's cited evidence exists, is publishable, unexpired, not superseded, and (closing a gap from the schema review) sourced from the right `source_type` where `evidence_freshness_rules.required_source` demands one
+- `exactMatch.ts` — numeric/date/identifier/entity/categorical claims must contain their cited evidence's value verbatim; `descriptive` claims are exempt
+- `seoStructure.ts` — meta title/description length, H1/H2 counts, internal links, FAQ range (the FAQ range didn't exist in the schema until migration 013 — the plan required it as a hard check but v4 never gave `content_briefs` anywhere to store it)
+- `bannedPhrases.ts` — regex scan for generic AI-filler phrasing (a starter list standing in for v2 §8d, which wasn't available)
+- `shingling.ts` — w-shingle Jaccard similarity, the *exact*-duplicate check
+- `thinContent.ts` — the §4a gate: templated-sentence ratio against the whole corpus's sentence skeletons (pooled, not pairwise — see migration 014's comment for why that's a fix relative to the schema as first written), metadata-only word count, corpus-relative information gain
+- `runDeterministicChecks.ts` — orchestrates all of the above into one pass/fail report; routes claim/block-level failures to block regeneration and page-level failures (SEO structure, banned phrase, duplicate, thin content) separately, per the plan's "regenerate the offending block only, never the whole page"
+- `db.ts` — loads a page's blocks/claims/evidence/corpus from Postgres, persists the result to `verification_runs` + `seo_audits`, and moves the page to `checks_passed` or `needs_review`
+
 ## Not built yet
 
 - Claude generation + self-critique (plan §5 Steps 2–3)
-- Deterministic checks, including the corpus uniqueness/thinness gate (plan §5 Step 4, §4a)
+- The Astro renderer that would actually compute `RenderedStructure` (H1/H2/FAQ/link counts) — `seoStructure.ts` takes it as an input today, deliberately renderer-agnostic until one exists
 - Astro site + Cloudflare Worker proxy
 - BDIP/Supabase sync jobs
 - Editorial queue / admin UI
 
 ## A note on this repo's tests
 
-Every claim in this README about the rate-limit worker's behavior —
-the RPM cap holding under concurrency, the daily budget resetting on
-the correct Pacific day, the 429 ladder's exact delays, the circuit
-breaker tripping at the threshold and not before, 429s never counting
-toward it — is covered by a test in `test/` that runs against real
-Postgres and Redis, not a mock. Run `npm test` before trusting any
-change to this worker.
+Every claim in this README — the RPM cap holding under concurrency,
+the daily budget resetting on the correct Pacific day, the 429
+ladder's exact delays, the circuit breaker tripping at the threshold
+and not before, 429s never counting toward it, every deterministic
+check's pass/fail boundary, the DB loaders round-tripping real rows —
+is covered by a test in `test/` that runs against real Postgres and
+Redis, not a mock. Run `npm test` before trusting any change.
