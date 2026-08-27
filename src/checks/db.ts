@@ -80,8 +80,13 @@ export async function loadPageDraft(pool: Pool, pageId: number): Promise<PageDra
     claim_type: ClaimType;
     evidence_ids: number[];
   }>(
+    // Cast to int[] (not left as the natural bigint[]): pg parses
+    // int4 arrays into number[] out of the box, but bigint arrays
+    // into string[] (same reason scalar bigint needs typeParsers.ts —
+    // it just doesn't cover arrays, a different OID). Evidence ids
+    // won't approach int4's ~2.1 billion range in this application.
     `SELECT c.id, c.block_id, c.claim_key, c.claim_text, c.claim_type,
-            COALESCE(array_remove(array_agg(ce.evidence_id), NULL), '{}') AS evidence_ids
+            COALESCE(array_remove(array_agg(ce.evidence_id), NULL), '{}')::int[] AS evidence_ids
      FROM claims c
      LEFT JOIN claim_evidence ce ON ce.claim_id = c.id
      WHERE c.page_id = $1

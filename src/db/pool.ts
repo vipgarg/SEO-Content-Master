@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import "./typeParsers.js"; // side effect: bigint columns parse as numbers — see that file's comment
 
 let pool: Pool | undefined;
 

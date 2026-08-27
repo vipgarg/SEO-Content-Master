@@ -3,7 +3,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    setupFiles: ["dotenv/config"],
+    // src/db/typeParsers.ts must run before any test's first pg query —
+    // several test files create their own `new Pool()` rather than
+    // going through src/db/pool.ts, and pg's type-parser registry is
+    // global (shared across every Pool instance in the process), so
+    // registering it once here covers all of them.
+    setupFiles: ["dotenv/config", "./src/db/typeParsers.ts"],
     testTimeout: 10_000,
     // These tests share one real Postgres and one real Redis instance
     // (deliberately — see README) rather than mocking either. Running

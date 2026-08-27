@@ -61,13 +61,24 @@ gemini worker.
 - `runDeterministicChecks.ts` — orchestrates all of the above into one pass/fail report; routes claim/block-level failures to block regeneration and page-level failures (SEO structure, banned phrase, duplicate, thin content) separately, per the plan's "regenerate the offending block only, never the whole page"
 - `db.ts` — loads a page's blocks/claims/evidence/corpus from Postgres, persists the result to `verification_runs` + `seo_audits`, and moves the page to `checks_passed` or `needs_review`
 
+**`src/generation/`** — plan §5 Steps 1–3: assembling the evidence pack, drafting, self-critique. No `ANTHROPIC_API_KEY` was available while building this (Claude Pro's subscription and the pay-per-token Anthropic API are separate products/billing — see the session's own discussion of that if you want the detail); it's built and tested the same way the Gemini worker was before a `GEMINI_API_KEY` existed — real network call swapped for an injected mock at every test, ready to point at the real API the moment a key exists.
+
+- `types.ts` — the structured JSON contract with Claude (blocks → claims → evidence_ids). v2 §7 was the intended source of truth for this shape and wasn't available, so this is inferred from `schema-v4.1.sql` plus plan §5 Step 2's prose — reconcile against v2 §7 once it exists, don't treat this as settled
+- `claudeClient.ts` — thin Messages API client, forces structured output via `tool_choice` rather than hoping a text response parses as JSON
+- `prompts.ts` — the draft and self-critique prompts, plus the JSON Schema for the forced tool call
+- `parseDraft.ts` — defensive runtime validation of Claude's tool output: catches duplicate block/claim keys, a numeric/date/identifier/entity/categorical claim with no evidence_ids, and (`findUnknownEvidenceReferences`) a claim citing an evidence id that was never in the pack sent to the model
+- `generateDraft.ts` — the two-call chain (draft → self-critique), same tool contract both times so the output is directly comparable
+- `db.ts` — plan §5 Step 1's evidence-pack query (extended, like `checks/evidenceIntegrity.ts`, to enforce `required_source` — closing that gap at the point evidence is assembled, not just where it's later checked), brief loading, draft persistence (replaces a page's blocks/claims/claim_evidence and advances its status), and `runGeneration`, which gates on `min_evidence` and routes to `evidence_gaps` rather than ever calling Claude when there isn't enough
+
+**A real bug found and fixed while wiring this up:** `pg` returns `BIGINT`/`BIGSERIAL` columns as JS strings, not numbers, by default — and every id in this schema is `BIGSERIAL`. `EvidencePackItem.id` was typed `number` everywhere but was actually a string at runtime; `findUnknownEvidenceReferences`' `Set.has()` lookup against Claude's real (genuine JSON number) tool-call output would have silently flagged every legitimate claim as a hallucinated evidence reference. Fixed at the root in `src/db/typeParsers.ts` — a global `pg` type-parser registration, not a patch at each call site — plus an explicit `::int[]` cast for the one aggregated-array case (a different OID, not covered by the scalar fix). Both are now regression-tested.
+
 ## Not built yet
 
-- Claude generation + self-critique (plan §5 Steps 2–3)
 - The Astro renderer that would actually compute `RenderedStructure` (H1/H2/FAQ/link counts) — `seoStructure.ts` takes it as an input today, deliberately renderer-agnostic until one exists
 - Astro site + Cloudflare Worker proxy
 - BDIP/Supabase sync jobs
 - Editorial queue / admin UI
+- The actual generation → checks → Gemini-verification pipeline wiring (each stage exists and is tested; nothing yet calls them in sequence end-to-end for a real page)
 
 ## A note on this repo's tests
 
@@ -75,6 +86,12 @@ Every claim in this README — the RPM cap holding under concurrency,
 the daily budget resetting on the correct Pacific day, the 429
 ladder's exact delays, the circuit breaker tripping at the threshold
 and not before, 429s never counting toward it, every deterministic
-check's pass/fail boundary, the DB loaders round-tripping real rows —
+check's pass/fail boundary, the DB loaders round-tripping real rows,
+the draft/self-critique call chain, the evidence-pack id type fix —
 is covered by a test in `test/` that runs against real Postgres and
-Redis, not a mock. Run `npm test` before trusting any change.
+Redis, not a mock (the one exception is Claude/Gemini's own HTTP call,
+mocked at the client boundary in both worker and generation tests —
+no paid API key exists in this environment). Run `npm test` before
+trusting any change. Postgres/Redis need to be running locally first —
+if `npm test` can't connect, that's the environment, not the tests
+(`service postgresql start` / `redis-server --daemonize yes`).

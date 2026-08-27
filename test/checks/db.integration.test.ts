@@ -109,6 +109,15 @@ describe("checks/db (integration)", () => {
     expect(draft.blocks).toHaveLength(1);
     expect(draft.claims).toHaveLength(1);
     expect(draft.claims[0]?.evidenceIds).toEqual([evidenceId]);
+    // Regression guard: evidence_id is BIGINT, aggregated into a
+    // bigint[] column — pg parses bigint arrays as string[] by default
+    // (a different OID from the scalar bigint fix in typeParsers.ts),
+    // which would silently break `Set.has()`/`===` lookups against a
+    // genuine JS number (e.g. Claude's real tool-call output) even
+    // though this same toEqual assertion above wouldn't catch it if
+    // both sides were consistently strings. See runDeterministicChecks.ts's
+    // db.ts query comment for the ::int[] cast this locks in.
+    expect(typeof draft.claims[0]?.evidenceIds[0]).toBe("number");
   });
 
   it("loadEvidenceByIds returns typed rows with dates/numbers converted", async () => {
@@ -119,6 +128,13 @@ describe("checks/db (integration)", () => {
     expect(row?.valueNum).toBe(812);
     expect(row?.publishable).toBe(true);
     expect(row?.retrievedAt).toBeInstanceOf(Date);
+    expect(row?.id).toBe(evidenceId);
+    expect(typeof row?.id).toBe("number"); // BIGSERIAL id — see typeParsers.ts
+    // A lookup keyed by a genuine number literal, not just the id this
+    // module itself produced — catches the case where the Map's own
+    // key insertion and this lookup could both be "consistently wrong"
+    // (both strings) and pass a same-source comparison anyway.
+    expect(map.has(Number(evidenceId))).toBe(true);
   });
 
   it("loadFreshnessRules parses Postgres INTERVAL into milliseconds correctly", async () => {
